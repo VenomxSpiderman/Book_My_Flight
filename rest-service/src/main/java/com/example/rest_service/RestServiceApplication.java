@@ -24,6 +24,8 @@ public class RestServiceApplication {
             normalizedUrl = toJdbcPostgresUrl(rawUrl, "postgres://");
         } else if (rawUrl.startsWith("postgresql://")) {
             normalizedUrl = toJdbcPostgresUrl(rawUrl, "postgresql://");
+        } else if (rawUrl.startsWith("jdbc:postgresql://")) {
+            normalizedUrl = normalizeJdbcPostgresUrl(rawUrl);
         }
 
         System.setProperty("spring.datasource.url", normalizedUrl);
@@ -34,9 +36,7 @@ public class RestServiceApplication {
     }
 
     private static String toJdbcPostgresUrl(String rawUrl, String prefix) {
-        String parseableUrl = rawUrl.startsWith("postgres://")
-                ? "postgresql://" + rawUrl.substring("postgres://".length())
-                : rawUrl;
+        String parseableUrl = toParseablePostgresUrl(rawUrl);
 
         try {
             URI uri = URI.create(parseableUrl);
@@ -58,10 +58,31 @@ public class RestServiceApplication {
         }
     }
 
+    private static String normalizeJdbcPostgresUrl(String rawUrl) {
+        String parseableUrl = toParseablePostgresUrl(rawUrl);
+
+        try {
+            URI uri = URI.create(parseableUrl);
+            if (uri.getHost() == null || uri.getPath() == null || uri.getPath().isBlank()) {
+                return rawUrl;
+            }
+
+            StringBuilder jdbc = new StringBuilder("jdbc:postgresql://").append(uri.getHost());
+            if (uri.getPort() > 0) {
+                jdbc.append(":").append(uri.getPort());
+            }
+            jdbc.append(uri.getPath());
+            if (uri.getQuery() != null && !uri.getQuery().isBlank()) {
+                jdbc.append("?").append(uri.getQuery());
+            }
+            return jdbc.toString();
+        } catch (IllegalArgumentException ignored) {
+            return rawUrl;
+        }
+    }
+
     private static void populateCredentialsFromUrl(String rawUrl) {
-        String parseableUrl = rawUrl.startsWith("postgres://")
-                ? "postgresql://" + rawUrl.substring("postgres://".length())
-                : rawUrl;
+        String parseableUrl = toParseablePostgresUrl(rawUrl);
 
         try {
             URI uri = URI.create(parseableUrl);
@@ -80,6 +101,16 @@ public class RestServiceApplication {
         } catch (IllegalArgumentException ignored) {
             // Keep defaults if URL cannot be parsed.
         }
+    }
+
+    private static String toParseablePostgresUrl(String rawUrl) {
+        if (rawUrl.startsWith("postgres://")) {
+            return "postgresql://" + rawUrl.substring("postgres://".length());
+        }
+        if (rawUrl.startsWith("jdbc:postgresql://")) {
+            return rawUrl.substring("jdbc:".length());
+        }
+        return rawUrl;
     }
 
     private static String firstNonBlankEnv(String... keys) {
